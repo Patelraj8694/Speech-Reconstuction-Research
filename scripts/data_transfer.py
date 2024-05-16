@@ -23,7 +23,7 @@ def process_files(subfolder, category, folder_suffix):
         
         # Command to convert sampling rate using sox
         # Ensure paths are quoted to handle spaces
-        cmd = f'sox "{file_path}" -r 16000 "{new_file_path}"'
+        cmd = f'sox "{file_path}" -r 16000 -c 1 -b 16 "{new_file_path}"'
         subprocess.run(cmd, shell=True)
         print(f"Processed {file_path} to {new_file_path}")
 
