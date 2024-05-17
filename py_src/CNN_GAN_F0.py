@@ -14,7 +14,6 @@ import torch.optim as optim
 import torchvision
 from torchvision import transforms, datasets, models
 from torch import Tensor
-import itertools
 
 import visdom
 import math
@@ -25,7 +24,7 @@ from scipy.io import savemat
 from scipy.io import loadmat
 
 from dataloaders import parallel_dataloader, non_parallel_dataloader
-from networks import dnn_generator, dnn_discriminator
+from networks import cnn_f0_generator, dnn_discriminator
 from utils import *
 
 import argparse
@@ -34,150 +33,69 @@ import argparse
 
 # Training Function
 def training(data_loader, n_epochs):
-    Gnet_ws.train()
-    Gnet_sw.train()
-    Dnet_w.train()
-    Dnet_s.train()
+    Gnet.train()
+    Dnet.train()
     
     for en, (a, b) in enumerate(data_loader):
-        a = Variable(a.squeeze(0).type(torch.FloatTensor)).to(device)
-        b = Variable(b.squeeze(0).type(torch.FloatTensor)).to(device)
+        a = Variable(a.unsqueeze(0).type(torch.FloatTensor)).to(device)
+        b = Variable(b.unsqueeze(0).type(torch.FloatTensor)).to(device)
 
-        valid = Variable(Tensor(a.shape[0], 1).fill_(1.0), requires_grad=False).to(device)
-        fake = Variable(Tensor(a.shape[0], 1).fill_(0.0), requires_grad=False).to(device)
+        valid = Variable(Tensor(1000, 1).fill_(1.0), requires_grad=False).to(device)
+        fake = Variable(Tensor(1000, 1).fill_(0.0), requires_grad=False).to(device)
         
-        ###### Generators W2S and S2W ######
+        # Update G network
         optimizer_G.zero_grad()
+        Gout = Gnet(a)
+        G_loss = adversarial_loss(Dnet(Gout.squeeze(0).squeeze(0)), valid)*2
         
-        # GAN loss
-        Gout_ws = Gnet_ws(a)
-        loss_GAN_W2S = criterion_GAN(Dnet_s(Gout_ws), valid)
-        
-        Gout_sw = Gnet_sw(b)
-        loss_GAN_S2W = criterion_GAN(Dnet_w(Gout_sw), valid)
-        
-        # Cycle loss
-        recovered_W = Gnet_sw(Gout_ws)
-        loss_cycle_WSW = criterion_cycle(recovered_W, a)*10.0
-        
-        recovered_S = Gnet_ws(Gout_sw)
-        loss_cycle_SWS = criterion_cycle(recovered_S, b)*10.0
-        
-        # Total loss
-        loss_G = loss_GAN_W2S + loss_GAN_S2W + loss_cycle_WSW + loss_cycle_SWS
-        loss_G.backward()
-        
+        G_loss.backward()
         optimizer_G.step()
 
-        
-        
-        ###### Discriminator W ######
-        optimizer_D_w.zero_grad()
+        # Update D network        
+        optimizer_D.zero_grad()
 
-        # Real loss
-        loss_D_real = criterion_GAN(Dnet_w(a), valid)
+        # Measure discriminator's ability to classify real from generated samples
+        b = b.view(1000, 1)
+        real_loss = adversarial_loss(Dnet(b), valid)
+        fake_loss = adversarial_loss(Dnet(Gout.squeeze(0).squeeze(0).detach()), fake)
+        D_loss = (real_loss + fake_loss)/2
+
+        D_loss.backward()
+        optimizer_D.step()
         
-        # Fake loss
-        loss_D_fake = criterion_GAN(Dnet_w(Gout_sw.detach()), fake)
-        
-        # Total loss
-        loss_D_w = (loss_D_real + loss_D_fake)*0.5
-        loss_D_w.backward()
-        
-        optimizer_D_w.step()
-        
-        ###################################
-        
-        ###### Discriminator B ######
-        optimizer_D_s.zero_grad()
-        
-        # Real loss
-        loss_D_real = criterion_GAN(Dnet_s(b), valid)
-        
-        # Fake loss
-        loss_D_fake = criterion_GAN(Dnet_s(Gout_ws.detach()), fake)
-        
-        # Total loss
-        loss_D_s = (loss_D_real + loss_D_fake)*0.5
-        loss_D_s.backward()
-        
-        optimizer_D_s.step()
-        ###################################
-        
-        print ("[Epoch: %d] [Iter: %d/%d] [D_S loss: %f] [D_W loss: %f] [G loss: %f]" % (n_epochs, en, len(data_loader), loss_D_s, loss_D_w, loss_G.cpu().data.numpy()))
+        print ("[Epoch: %d] [Iter: %d/%d] [D loss: %f] [G loss: %f]" % (n_epochs, en, len(data_loader), D_loss, G_loss.cpu().data.numpy()))
     
 
 # Validation function
 def validating(data_loader):
-    Gnet_ws.eval()
-    Gnet_sw.eval()
-    Dnet_s.eval()
-    Dnet_w.eval()
-    Grunning_loss = 0
-    Drunning_loss = 0
+    Gnet.eval()
+    Dnet.eval()
+    G_running_loss = 0
+    D_running_loss = 0
     
     for en, (a, b) in enumerate(data_loader):
-        a = Variable(a.squeeze(0).type(torch.FloatTensor)).to(device)
-        b = Variable(b.squeeze(0).type(torch.FloatTensor)).to(device)
+        a = Variable(a.unsqueeze(0).type(torch.FloatTensor)).to(device)
+        b = Variable(b.unsqueeze(0).type(torch.FloatTensor)).to(device)
 
-        valid = Variable(Tensor(a.shape[0], 1).fill_(1.0), requires_grad=False).to(device)
-        fake = Variable(Tensor(a.shape[0], 1).fill_(0.0), requires_grad=False).to(device)
+        valid = Variable(Tensor(1000, 1).fill_(1.0), requires_grad=False).to(device)
+        fake = Variable(Tensor(1000, 1).fill_(0.0), requires_grad=False).to(device)
         
-        ###### Generators W2S and S2W ######
-        
-        # GAN loss
-        Gout_ws = Gnet_ws(a)
-        loss_GAN_W2S = criterion_GAN(Dnet_s(Gout_ws), valid)
-        
-        Gout_sw = Gnet_sw(b)
-        loss_GAN_S2W = criterion_GAN(Dnet_w(Gout_sw), valid)
-        
-        # Cycle loss
-        recovered_W = Gnet_sw(Gout_ws)
-        loss_cycle_WSW = criterion_cycle(recovered_W, a)*10.0
-        
-        recovered_S = Gnet_ws(Gout_sw)
-        loss_cycle_SWS = criterion_cycle(recovered_S, b)*10.0
-        
-        # Total loss
-        loss_G = loss_GAN_W2S + loss_GAN_S2W + loss_cycle_WSW + loss_cycle_SWS
+        Gout = Gnet(a)
+        G_loss = adversarial_loss(Dnet(Gout.squeeze(0).squeeze(0)), valid)*2
 
-        
-        
-        ###### Discriminator W ######
-        optimizer_D_w.zero_grad()
-        
-        # Real loss
-        loss_D_real = criterion_GAN(Dnet_w(a), valid)
-        
-        # Fake loss
-        loss_D_fake = criterion_GAN(Dnet_w(Gout_sw.detach()), fake)
-        
-        # Total loss
-        loss_D_w = (loss_D_real + loss_D_fake)*0.5
+        G_running_loss += G_loss.item()
 
+        # Measure discriminator's ability to classify real from generated samples
+        b = b.view(1000, 1)
+        real_loss = adversarial_loss(Dnet(b), valid)
+        fake_loss = adversarial_loss(Dnet(Gout.squeeze(0).squeeze(0).detach()), fake)
+        D_loss = (real_loss + fake_loss)/2
         
-        ###### Discriminator B ######
-        optimizer_D_s.zero_grad()
-        
-        # Real loss
-        loss_D_real = criterion_GAN(Dnet_s(b), valid)
-        
-        # Fake loss
-        loss_D_fake = criterion_GAN(Dnet_s(Gout_ws.detach()), fake)
-        
-        # Total loss
-        loss_D_s = (loss_D_real + loss_D_fake)*0.5
- 
-        ###################################
-        loss_D = loss_D_s + loss_D_w	
-
-        Grunning_loss += loss_G.item()
-
-        Drunning_loss += loss_D.item()
-        
-    return Drunning_loss/(en+1),Grunning_loss/(en+1)
+        D_running_loss += D_loss.item()
     
+    return D_running_loss/(en+1), G_running_loss/(en+1)
+
+
 
 def do_training():
     epoch = args.epoch
@@ -187,7 +105,8 @@ def do_training():
 
         training(train_dataloader, ep+1)
         if (ep+1)%args.checkpoint_interval==0:
-            torch.save(Gnet_ws, join(checkpoint,"gen_ws_Ep_{}.pth".format(ep+1)))
+            torch.save(Gnet, join(checkpoint,"gen_g_1_d_1_Ep_{}.pth".format(ep+1)))
+            torch.save(Dnet, join(checkpoint,"dis_g_1_d_1_Ep_{}.pth".format(ep+1)))
         
         if (ep+1)%args.validation_interval==0:
             dl,gl = validating(val_dataloader)
@@ -224,7 +143,7 @@ def do_testing():
     save_folder = args.save_folder
     test_folder_path = args.test_folder
     dirs = listdir(test_folder_path)
-    Gnet = torch.load(join(checkpoint,"gen_ws_Ep_{}.pth".format(args.test_epoch))).to(device)
+    Gnet = torch.load(join(checkpoint,"gen_g_1_d_1_Ep_{}.pth".format(args.test_epoch))).to(device)
 
     for i in dirs:
         
@@ -252,7 +171,6 @@ if __name__ == '__main__':
     parser.add_argument("-lr", "--learning_rate", type=float, default=0.0001, help="Learning rate")
     parser.add_argument("-vi", "--validation_interval", type=int, default=1, help="Validation Interval")
     parser.add_argument("-mf", "--mainfolder", type=str, default="../dataset/features/US_102/batches/f0/", help="Main folder path to load F0 batches")
-    parser.add_argument("-vf", "--validation_folder", type=str, default="../dataset/features/US_102/batches/f0/", help="Validation folder path to load F0 batches")
     parser.add_argument("-cf", "--checkpoint_folder", type=str, default="../results/checkpoints/f0/", help="Checkpoint saving path for F0 features")
     parser.add_argument("-sf", "--save_folder", type=str, default="../results/mask/f0/", help="Saving folder for converted MCC features")
     parser.add_argument("-tf", "--test_folder", type=str, default="../results/mask/mcc/", help="Input whisper mcc features for testing")
@@ -268,7 +186,6 @@ if __name__ == '__main__':
     # Path where you want to store your results        
     mainfolder = args.mainfolder
     checkpoint = args.checkpoint_folder
-    validation = args.validation_folder
 
     # Training Data path
     if args.nonparallel:
@@ -278,24 +195,22 @@ if __name__ == '__main__':
 
 
     traindata = custom_dataloader(folder_path=mainfolder)
-    train_dataloader = DataLoader(dataset=traindata, batch_size=1, shuffle=True, num_workers=0)  # For windows keep num_workers = 0
+    train_dataloader = DataLoader(dataset=traindata, batch_size=1, shuffle=True, num_workers=2)  # For windows keep num_workers = 0
 
 
     # Path for validation data
-    valdata = custom_dataloader(folder_path=validation)
-    val_dataloader = DataLoader(dataset=valdata, batch_size=1, shuffle=True, num_workers=0)  # For windows keep num_workers = 0
+    valdata = custom_dataloader(folder_path=mainfolder)
+    val_dataloader = DataLoader(dataset=valdata, batch_size=1, shuffle=True, num_workers=2)  # For windows keep num_workers = 0
 
 
     # Loss Functions
-    criterion_GAN = torch.nn.MSELoss()
-    criterion_cycle = torch.nn.L1Loss()
-    criterion_identity = torch.nn.L1Loss()
+    adversarial_loss = nn.BCELoss()
+    mmse_loss = nn.MSELoss()
 
-    #I/O variables
-    in_g = 40
-    out_g = 40
-    in_d = 40
-    out_d = 1
+    ip_g = 40 # MCEP feature dimentions
+    op_g = 1 # F0 feature dimentions
+    ip_d = 1 # F0 feature dimentions
+    op_d = 1
 
 
     # Check for Cuda availability
@@ -306,16 +221,13 @@ if __name__ == '__main__':
 
     # Initialization 
     if args.dnn_cnn == "dnn":
-        Gnet_ws = dnn_generator(in_g, 1, 2048, 1024, 512).to(device)
-        Gnet_sw = dnn_generator(1, out_g, 2048, 1024, 512).to(device)
-        Dnet_w = dnn_discriminator(in_d, out_d, 512, 512, 512).to(device)
-        Dnet_s = dnn_discriminator(1, out_d, 512, 512, 512).to(device)
+        Gnet = cnn_f0_generator().to(device)
+        Dnet = dnn_discriminator(ip_d, op_d, 512, 512, 512, 512).to(device)
 
 
     # Initialize the optimizers
-    optimizer_G = torch.optim.Adam(itertools.chain(Gnet_ws.parameters(), Gnet_sw.parameters()),lr=0.001)
-    optimizer_D_w = torch.optim.Adam(Dnet_w.parameters(), lr=args.learning_rate)
-    optimizer_D_s = torch.optim.Adam(Dnet_s.parameters(), lr=args.learning_rate)
+    optimizer_G = torch.optim.Adam(Gnet.parameters(), lr=args.learning_rate)
+    optimizer_D = torch.optim.Adam(Dnet.parameters(), lr=args.learning_rate)
 
 
     if args.train:
