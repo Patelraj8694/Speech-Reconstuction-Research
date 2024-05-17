@@ -153,7 +153,9 @@ def do_testing():
         a = torch.from_numpy(d['foo'])
         a = Variable(a.type('torch.FloatTensor')).to(device)
         
-        Gout = Gnet(a)
+        Gout = Gnet(a.unsqueeze(0).unsqueeze(0))
+
+        Gout = Gout.squeeze(0).squeeze(0)
 
         savemat(join(save_folder,'{}.mat'.format(i[:-4])),  mdict={'foo': Gout.cpu().data.numpy()})
 
@@ -222,7 +224,7 @@ if __name__ == '__main__':
     # Initialization 
     if args.dnn_cnn == "inception":
         Gnet = inception_f0_generator().to(device)
-        Dnet = dnn_discriminator(ip_d, op_d, 512, 512, 512, 512).to(device)
+        Dnet = dnn_discriminator(ip_d, op_d, 512, 512, 512).to(device)
 
 
     # Initialize the optimizers

@@ -157,6 +157,8 @@ def do_testing():
         
         Gout = Gnet(a)
 
+        Gout = Gout.squeeze(0).squeeze(0)
+
         savemat(join(save_folder,'{}.mat'.format(i[:-4])),  mdict={'foo': Gout.cpu().data.numpy()})
 
 
