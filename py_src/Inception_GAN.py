@@ -24,7 +24,7 @@ from scipy.io import savemat
 from scipy.io import loadmat
 
 from dataloaders import parallel_dataloader, non_parallel_dataloader
-from networks import cnn_f0_generator, dnn_discriminator
+from networks import inception_generator, inception_discriminator
 from utils import *
 
 import argparse
@@ -40,31 +40,28 @@ def training(data_loader, n_epochs):
         a = Variable(a.unsqueeze(0).type(torch.FloatTensor)).to(device)
         b = Variable(b.unsqueeze(0).type(torch.FloatTensor)).to(device)
 
-        valid = Variable(Tensor(1000, 1).fill_(1.0), requires_grad=False).to(device)
-        fake = Variable(Tensor(1000, 1).fill_(0.0), requires_grad=False).to(device)
+        valid = Variable(Tensor(a.shape[0], 1).fill_(1.0), requires_grad=False).to(device)
+        fake = Variable(Tensor(a.shape[0], 1).fill_(0.0), requires_grad=False).to(device)
         
-        # Update G network
         optimizer_G.zero_grad()
+
         Gout = Gnet(a)
-        G_loss = adversarial_loss(Dnet(Gout.squeeze(0).squeeze(0)), valid)*2
+        G_loss = adversarial_loss(Dnet(Gout), valid)*5
         
         G_loss.backward()
         optimizer_G.step()
-
-        # Update D network        
+                
         optimizer_D.zero_grad()
 
         # Measure discriminator's ability to classify real from generated samples
-        b = b.view(1000, 1)
         real_loss = adversarial_loss(Dnet(b), valid)
-        fake_loss = adversarial_loss(Dnet(Gout.squeeze(0).squeeze(0).detach()), fake)
+        fake_loss = adversarial_loss(Dnet(Gout.detach()), fake)
         D_loss = (real_loss + fake_loss)/2
 
         D_loss.backward()
         optimizer_D.step()
-        
+
         print ("[Epoch: %d] [Iter: %d/%d] [D loss: %f] [G loss: %f]" % (n_epochs, en, len(data_loader), D_loss, G_loss.cpu().data.numpy()))
-    
 
 # Validation function
 def validating(data_loader):
@@ -77,18 +74,17 @@ def validating(data_loader):
         a = Variable(a.unsqueeze(0).type(torch.FloatTensor)).to(device)
         b = Variable(b.unsqueeze(0).type(torch.FloatTensor)).to(device)
 
-        valid = Variable(Tensor(1000, 1).fill_(1.0), requires_grad=False).to(device)
-        fake = Variable(Tensor(1000, 1).fill_(0.0), requires_grad=False).to(device)
+        valid = Variable(Tensor(a.shape[0], 1).fill_(1.0), requires_grad=False).to(device)
+        fake = Variable(Tensor(a.shape[0], 1).fill_(0.0), requires_grad=False).to(device)
         
         Gout = Gnet(a)
-        G_loss = adversarial_loss(Dnet(Gout.squeeze(0).squeeze(0)), valid)*2
+        G_loss = adversarial_loss(Dnet(Gout), valid)
 
         G_running_loss += G_loss.item()
 
         # Measure discriminator's ability to classify real from generated samples
-        b = b.view(1000, 1)
         real_loss = adversarial_loss(Dnet(b), valid)
-        fake_loss = adversarial_loss(Dnet(Gout.squeeze(0).squeeze(0).detach()), fake)
+        fake_loss = adversarial_loss(Dnet(Gout.detach()), fake)
         D_loss = (real_loss + fake_loss)/2
         
         D_running_loss += D_loss.item()
@@ -99,6 +95,7 @@ def validating(data_loader):
 
 def do_training():
     epoch = args.epoch
+
     dl_arr = []
     gl_arr = []
     for ep in range(epoch):
@@ -107,10 +104,13 @@ def do_training():
         if (ep+1)%args.checkpoint_interval==0:
             torch.save(Gnet, join(checkpoint,"gen_g_1_d_1_Ep_{}.pth".format(ep+1)))
             torch.save(Dnet, join(checkpoint,"dis_g_1_d_1_Ep_{}.pth".format(ep+1)))
-        
+
+
         if (ep+1)%args.validation_interval==0:
             dl,gl = validating(val_dataloader)
+            
             print("D_loss: " + str(dl) + " G_loss: " + str(gl))
+            
             dl_arr.append(dl)
             gl_arr.append(gl)
             
@@ -140,46 +140,81 @@ Testing on training dataset as of now. Later it will be modified according to th
 
 
 def do_testing():
+    print("Testing")
     save_folder = args.save_folder
-    test_folder_path = args.test_folder
+    test_folder_path=args.test_folder
+
     dirs = listdir(test_folder_path)
     Gnet = torch.load(join(checkpoint,"gen_g_1_d_1_Ep_{}.pth".format(args.test_epoch))).to(device)
 
     for i in dirs:
         
-        # Load the .mat file
-        d = read_mat(join(test_folder_path, i))
+        # Load the .mcc file
+        d = read_mcc(join(test_folder_path, i))
 
-        a = torch.from_numpy(d['foo'])
-        a = Variable(a.type('torch.FloatTensor')).to(device)
+        a = torch.from_numpy(d)
+        a = Variable(a.unsqueeze(0).unsqueeze(0).type('torch.FloatTensor')).to(device)
         
         Gout = Gnet(a)
 
         savemat(join(save_folder,'{}.mat'.format(i[:-4])),  mdict={'foo': Gout.cpu().data.numpy()})
 
 
-if __name__ == '__main__':
+'''
+Check MCD value on validation data for now! :)
+'''
 
+
+def give_MCD():
+    Gnet = torch.load(join(checkpoint,"gen_g_1_d_1_Ep_{}.pth".format(args.test_epoch))).to(device)
+    mcd = []
+
+    for en, (a, b) in enumerate(val_dataloader):
+        a = Variable(a.squeeze(0).type(torch.FloatTensor)).to(device)
+        # print("Shape of a (input to generator):", a.shape)  # Expected: (1000, 40)
+        
+        b = b.cpu().data.numpy()[0]
+        # print("Shape of b (ground truth):", b.shape)  # Expected: (1000, 40)
+
+        # Get output from generator
+        Gout = Gnet(a.unsqueeze(0).unsqueeze(0)).cpu().data.numpy()
+        # print("Shape of Gout (raw output from generator):", Gout.shape)  # Expected: (1, 1, 1000, 40)
+
+        # Reshape Gout to (1000, 40)
+        Gout = Gout.squeeze(0).squeeze(0)
+        # print("Shape of Gout (reshaped):", Gout.shape)  # Expected: (1000, 40)
+
+        # Calculate MCD
+        for k in range(Gout.shape[0]):
+            ans = logSpecDbDist(Gout[k][1:], b[k][1:])
+            mcd.append(ans)
+
+    mcd = np.array(mcd)
+    print("Mean MCD:", np.mean(mcd))
+
+
+if __name__ == '__main__':
+    
     parser = argparse.ArgumentParser(description="Training methodology for Whisper-to-Normal Speech Conversion")
     parser.add_argument("-np", "--nonparallel", type=bool, default=False, help="Parallel training or non-parallel?")
-    parser.add_argument("-dc", "--dnn_cnn", type=str, default='dnn', help="DNN or CNN architecture for generator and discriminator?")
+    parser.add_argument("-dc", "--dnn_cnn", type=str, default='inception', help="DNN or CNN architecture for generator and discriminator?")
     parser.add_argument("-tr", "--train", action="store_true", help="Want to train?")
     parser.add_argument("-te", "--test", action="store_true", help="Want to test?")
+    parser.add_argument("-m", "--mcd", action="store_true", help="Want MCD value?")
     parser.add_argument("-ci", "--checkpoint_interval", type=int, default=5, help="Checkpoint interval")
     parser.add_argument("-e", "--epoch", type=int, default=100, help="Number of Epochs")
     parser.add_argument("-et", "--test_epoch", type=int, default=100, help="Epochs to test")
     parser.add_argument("-lr", "--learning_rate", type=float, default=0.0001, help="Learning rate")
     parser.add_argument("-vi", "--validation_interval", type=int, default=1, help="Validation Interval")
-    parser.add_argument("-mf", "--mainfolder", type=str, default="../dataset/features/US_102/batches/f0/", help="Main folder path to load F0 batches")
-    parser.add_argument("-cf", "--checkpoint_folder", type=str, default="../results/checkpoints/f0/", help="Checkpoint saving path for F0 features")
-    parser.add_argument("-sf", "--save_folder", type=str, default="../results/mask/f0/", help="Saving folder for converted MCC features")
-    parser.add_argument("-tf", "--test_folder", type=str, default="../results/mask/mcc/", help="Input whisper mcc features for testing")
+    parser.add_argument("-mf", "--mainfolder", type=str, default="../dataset/features/US_102/batches/mcc/", help="Main folder path to load MCC batches")
+    parser.add_argument("-cf", "--checkpoint_folder", type=str, default="../results/checkpoints/mcc/", help="Checkpoint saving path for MCC features")
+    parser.add_argument("-sf", "--save_folder", type=str, default="../results/mask/mcc/", help="Saving folder for converted MCC features")
+    parser.add_argument("-tf", "--test_folder", type=str, default="../dataset/features/US_102/Whisper/mcc/", help="Input whisper mcc features for testing")
 
     args = parser.parse_args()
 
 
-
-
+    
     # Connect with Visdom for the loss visualization
     viz = visdom.Visdom()
 
@@ -193,24 +228,18 @@ if __name__ == '__main__':
     else:
         custom_dataloader = parallel_dataloader
 
-
     traindata = custom_dataloader(folder_path=mainfolder)
-    train_dataloader = DataLoader(dataset=traindata, batch_size=1, shuffle=True, num_workers=2)  # For windows keep num_workers = 0
+    train_dataloader = DataLoader(dataset=traindata, batch_size=1, shuffle=True, num_workers=0)  # For windows keep num_workers = 0
 
 
     # Path for validation data
     valdata = custom_dataloader(folder_path=mainfolder)
-    val_dataloader = DataLoader(dataset=valdata, batch_size=1, shuffle=True, num_workers=2)  # For windows keep num_workers = 0
+    val_dataloader = DataLoader(dataset=valdata, batch_size=1, shuffle=True, num_workers=0)  # For windows keep num_workers = 0
 
 
     # Loss Functions
     adversarial_loss = nn.BCELoss()
     mmse_loss = nn.MSELoss()
-
-    ip_g = 40 # MCEP feature dimentions
-    op_g = 1 # F0 feature dimentions
-    ip_d = 1 # F0 feature dimentions
-    op_d = 1
 
 
     # Check for Cuda availability
@@ -219,18 +248,19 @@ if __name__ == '__main__':
     else:
         device = 'cpu'
 
-    # Initialization 
-    if args.dnn_cnn == "dnn":
-        Gnet = cnn_f0_generator().to(device)
-        Dnet = dnn_discriminator(ip_d, op_d, 512, 512, 512).to(device)
+    # Initialization
+    if args.dnn_cnn == "inception":
+        Gnet = inception_generator().to(device)
+        Dnet = inception_discriminator().to(device)
 
 
     # Initialize the optimizers
     optimizer_G = torch.optim.Adam(Gnet.parameters(), lr=args.learning_rate)
     optimizer_D = torch.optim.Adam(Dnet.parameters(), lr=args.learning_rate)
 
-
     if args.train:
         do_training()
     if args.test:
         do_testing()
+    if args.mcd:
+        give_MCD()

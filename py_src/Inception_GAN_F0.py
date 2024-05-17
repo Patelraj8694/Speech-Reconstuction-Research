@@ -24,7 +24,7 @@ from scipy.io import savemat
 from scipy.io import loadmat
 
 from dataloaders import parallel_dataloader, non_parallel_dataloader
-from networks import cnn_f0_generator, dnn_discriminator
+from networks import inception_f0_generator, dnn_discriminator
 from utils import *
 
 import argparse
@@ -162,7 +162,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="Training methodology for Whisper-to-Normal Speech Conversion")
     parser.add_argument("-np", "--nonparallel", type=bool, default=False, help="Parallel training or non-parallel?")
-    parser.add_argument("-dc", "--dnn_cnn", type=str, default='dnn', help="DNN or CNN architecture for generator and discriminator?")
+    parser.add_argument("-dc", "--dnn_cnn", type=str, default='inception', help="DNN or CNN architecture for generator and discriminator?")
     parser.add_argument("-tr", "--train", action="store_true", help="Want to train?")
     parser.add_argument("-te", "--test", action="store_true", help="Want to test?")
     parser.add_argument("-ci", "--checkpoint_interval", type=int, default=5, help="Checkpoint interval")
@@ -220,9 +220,9 @@ if __name__ == '__main__':
         device = 'cpu'
 
     # Initialization 
-    if args.dnn_cnn == "dnn":
-        Gnet = cnn_f0_generator().to(device)
-        Dnet = dnn_discriminator(ip_d, op_d, 512, 512, 512).to(device)
+    if args.dnn_cnn == "inception":
+        Gnet = inception_f0_generator().to(device)
+        Dnet = dnn_discriminator(ip_d, op_d, 512, 512, 512, 512).to(device)
 
 
     # Initialize the optimizers
