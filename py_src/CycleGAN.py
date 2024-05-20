@@ -314,6 +314,7 @@ if __name__ == '__main__':
     parser.add_argument("-lr", "--learning_rate", type=float, default=0.0001, help="Learning rate")
     parser.add_argument("-vi", "--validation_interval", type=int, default=1, help="Validation Interval")
     parser.add_argument("-mf", "--mainfolder", type=str, default="../dataset/features/US_102/batches/mcc/", help="Main folder path to load MCC batches")
+    parser.add_argument("-vf", "--validation_folder", type=str, default="../dataset/features/US_102/Whisper/mcc/", help="Validation folder path for MCC features")
     parser.add_argument("-cf", "--checkpoint_folder", type=str, default="../results/checkpoints/mcc/", help="Checkpoint saving path for MCC features")
     parser.add_argument("-sf", "--save_folder", type=str, default="../results/mask/mcc/", help="Saving folder for converted MCC features")
     parser.add_argument("-tf", "--test_folder", type=str, default="../dataset/features/US_102/Whisper/mcc/", help="Input whisper mcc features for testing")
@@ -328,6 +329,7 @@ if __name__ == '__main__':
     # Path where you want to store your results        
     mainfolder = args.mainfolder
     checkpoint = args.checkpoint_folder
+    validation = args.validation_folder
 
     # Training Data path
     if args.nonparallel:
@@ -340,7 +342,7 @@ if __name__ == '__main__':
 
 
     # Path for validation data
-    valdata = custom_dataloader(folder_path=mainfolder)
+    valdata = custom_dataloader(folder_path=validation)
     val_dataloader = DataLoader(dataset=valdata, batch_size=1, shuffle=True, num_workers=0)  # For windows keep num_workers = 0
 
 

@@ -47,65 +47,56 @@ class dnn_generator(nn.Module):
 
 # Discriminator (Dicriminate between Whispered speeches) also consists of DNN
 class dnn_discriminator(nn.Module):
-
-    def weight_init(self):
-        nn.init.xavier_uniform_(self.fc1.weight)
-        nn.init.xavier_uniform_(self.fc2.weight)
-        nn.init.xavier_uniform_(self.fc3.weight)
-        nn.init.xavier_uniform_(self.out.weight)
-    
     def __init__(self, D_in, D_out, w1, w2, w3):
         super(dnn_discriminator, self).__init__()
-        
-        self.fc1= nn.Linear(D_in, w1)
-        self.fc2= nn.Linear(w1, w2)
-        self.fc3= nn.Linear(w2, w3)
-        self.out= nn.Linear(w3, D_out)
-        
-        #self.weight_init()
-        
+        self.fc1 = nn.Linear(D_in, w1)
+        self.fc2 = nn.Linear(w1, w2)
+        self.fc3 = nn.Linear(w2, w3)
+        self.out = nn.Linear(w3, D_out)
+        self.dropout = nn.Dropout(0.3)  # Adding dropout
+
     def forward(self, y):
-        
         y = F.relu(self.fc1(y))
+        y = self.dropout(y)  # Applying dropout
         y = F.relu(self.fc2(y))
+        y = self.dropout(y)  # Applying dropout
         y = F.relu(self.fc3(y))
-        y = F.sigmoid(self.out(y))
+        y = torch.sigmoid(self.out(y))  # Using torch.sigmoid instead of F.sigmoid
         return y
 
 
 class dnn_encoder(nn.Module):
-
     def __init__(self, G_in, G_out, w1, w2, w3):
         super(dnn_encoder, self).__init__()
-
         self.fc1 = nn.Linear(G_in, w1)
         self.fc2 = nn.Linear(w1, w2)
         self.fc3 = nn.Linear(w2, w3)
         self.out = nn.Linear(w3, G_out)
+        self.dropout = nn.Dropout(0.3)  # Adding dropout
 
     def forward(self, x):
-
         x = F.leaky_relu(self.fc1(x))
+        x = self.dropout(x)  # Applying dropout
         x = F.leaky_relu(self.fc2(x))
+        x = self.dropout(x)  # Applying dropout
         x = F.leaky_relu(self.fc3(x))
         x = self.out(x)
         return x
 
 class dnn_decoder(nn.Module):
-
     def __init__(self, D_in, D_out, w1, w2, w3):
-
         super(dnn_decoder, self).__init__()
-
         self.fc1 = nn.Linear(D_in, w1)
         self.fc2 = nn.Linear(w1, w2)
         self.fc3 = nn.Linear(w2, w3)
         self.out = nn.Linear(w3, D_out)
+        self.dropout = nn.Dropout(0.3)  # Adding dropout
 
     def forward(self, x):
-
         x = F.relu(self.fc1(x))
+        x = self.dropout(x)  # Applying dropout
         x = F.relu(self.fc2(x))
+        x = self.dropout(x)  # Applying dropout
         x = F.relu(self.fc3(x))
         x = self.out(x)
         return x

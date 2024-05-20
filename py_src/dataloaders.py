@@ -64,7 +64,7 @@ class mspec_net_speech_data(Dataset):
         d1 = loadmat(join(self.path1, self.files1[int(a)]))             # NAM-Whisper
         d2 = loadmat(join(self.path2, self.files2[int(b)]))             # Whisper-Speech
 
-        return np.array(d1['Feat']), np.array(d1['Clean_cent']),  np.array(d2['feat']), np.array(d2['Clean_cent'])
+        return np.array(d1['Feat']), np.array(d1['Clean_cent']),  np.array(d2['Feat']), np.array(d2['Clean_cent'])
 
     def __len__(self):
         return len(self.files1)
