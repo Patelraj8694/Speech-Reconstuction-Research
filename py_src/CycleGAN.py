@@ -137,6 +137,7 @@ def validating(data_loader):
     Dnet_w.eval()
     Grunning_loss = 0
     Drunning_loss = 0
+    mcd_values = []
     
     for en, (a, b) in enumerate(data_loader):
         a = Variable(a.squeeze(0).type(torch.FloatTensor)).to(device)
@@ -205,8 +206,16 @@ def validating(data_loader):
         Grunning_loss += loss_G.item()
 
         Drunning_loss += loss_D.item()
+
+        # Calculate MCD
+        b_np = b.cpu().data.numpy()
+        Gout_np = Gout_ws.cpu().data.numpy()
+        mcd = np.mean([logSpecDbDist(Gout_np[i][1:], b_np[i][1:]) for i in range(len(b_np))])
+        mcd_values.append(mcd)
+    
+    avg_mcd = np.mean(mcd_values)
         
-    return Drunning_loss/(en+1),Grunning_loss/(en+1)
+    return Drunning_loss/(en+1),Grunning_loss/(en+1),avg_mcd
     
 
 
@@ -215,6 +224,7 @@ def do_training():
 
     dl_arr = []
     gl_arr = []
+    mcd_arr = []
     for ep in range(epoch):
 
         training(train_dataloader, ep+1)
@@ -223,23 +233,27 @@ def do_training():
 
 
         if (ep+1)%args.validation_interval==0:
-            dl,gl = validating(val_dataloader)
+            dl,gl,mcd = validating(val_dataloader)
             
             print("D_loss: " + str(dl) + " G_loss: " + str(gl))
             
             dl_arr.append(dl)
             gl_arr.append(gl)
+            mcd_arr.append(mcd)
             
             if ep == 0:
                 gplot = viz.line(Y=np.array([gl]), X=np.array([ep]), opts=dict(title='Generator'))
                 dplot = viz.line(Y=np.array([dl]), X=np.array([ep]), opts=dict(title='Discriminator'))
+                mplot = viz.line(Y=np.array([mcd]), X=np.array([ep]), opts=dict(title='MCD'))
             else:
                 viz.line(Y=np.array([gl]), X=np.array([ep]), win=gplot, update='append')
                 viz.line(Y=np.array([dl]), X=np.array([ep]), win=dplot, update='append')
+                viz.line(Y=np.array([mcd]), X=np.array([ep]), win=mplot, update='append')
 
             
     savemat(checkpoint+"/"+str('discriminator_loss.mat'),  mdict={'foo': dl_arr})
     savemat(checkpoint+"/"+str('generator_loss.mat'),  mdict={'foo': gl_arr})
+    savemat(checkpoint+"/"+str('mcd.mat'),  mdict={'foo': mcd_arr})
 
     plt.figure(1)
     plt.plot(dl_arr)
@@ -247,6 +261,9 @@ def do_training():
     plt.figure(2)
     plt.plot(gl_arr)
     plt.savefig(checkpoint+'/generator_loss.png')
+    plt.figure(3)
+    plt.plot(mcd_arr)
+    plt.savefig(checkpoint+'/mcd.png')
 
 
 

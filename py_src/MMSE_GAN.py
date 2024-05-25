@@ -29,8 +29,6 @@ from utils import *
 
 import argparse
 
-
-
 # Training Function
 def training(data_loader, n_epochs):
     Gnet.train()
@@ -66,43 +64,49 @@ def training(data_loader, n_epochs):
         
         
         print ("[Epoch: %d] [Iter: %d/%d] [D loss: %f] [G loss: %f]" % (n_epochs, en, len(data_loader), D_loss, G_loss.cpu().data.numpy()))
-    
-
-# Validation function
+ 
+# Validation function that also calculates MCD
 def validating(data_loader):
     Gnet.eval()
     Dnet.eval()
     Grunning_loss = 0
     Drunning_loss = 0
+    mcd_values = []
     
     for en, (a, b) in enumerate(data_loader):
         a = Variable(a.squeeze(0).type(torch.FloatTensor)).to(device)
         b = Variable(b.squeeze(0).type(torch.FloatTensor)).to(device)
 
-        valid = Variable(Tensor(a.shape[0], 1).fill_(1.0), requires_grad=False).to(device)
-        fake = Variable(Tensor(a.shape[0], 1).fill_(0.0), requires_grad=False).to(device)
+        valid = Variable(torch.Tensor(a.shape[0], 1).fill_(1.0), requires_grad=False).to(device)
+        fake = Variable(torch.Tensor(a.shape[0], 1).fill_(0.0), requires_grad=False).to(device)
         
         Gout = Gnet(a)
         G_loss = adversarial_loss(Dnet(Gout), valid) + mmse_loss(Gout, b)
-
         Grunning_loss += G_loss.item()
-
 
         real_loss = adversarial_loss(Dnet(b), valid)
         fake_loss = adversarial_loss(Dnet(Gout.detach()), fake)
         D_loss = (real_loss + fake_loss) / 2
-        
         Drunning_loss += D_loss.item()
         
-    return Drunning_loss/(en+1),Grunning_loss/(en+1)
+        # Calculate MCD
+        b_np = b.cpu().data.numpy()
+        Gout_np = Gout.cpu().data.numpy()
+        mcd = np.mean([logSpecDbDist(Gout_np[i][1:], b_np[i][1:]) for i in range(len(b_np))])
+        mcd_values.append(mcd)
+    
+    avg_mcd = np.mean(mcd_values)
+    # Update Visdom for MCD
+    # viz.line(Y=np.array([avg_mcd]), X=np.array([epoch]), win='mcd_plot', update='append' if epoch > 0 else 'replace', opts=dict(title='MCD by Epoch'))
+    return Drunning_loss/(en+1), Grunning_loss/(en+1), avg_mcd
 
-
-
+# Training function updated to include MCD and maintain existing functionality
 def do_training():
     epoch = args.epoch
 
     dl_arr = []
     gl_arr = []
+    mcd_arr = []
     for ep in range(epoch):
 
         training(train_dataloader, ep+1)
@@ -112,23 +116,26 @@ def do_training():
 
 
         if (ep+1)%args.validation_interval==0:
-            dl,gl = validating(val_dataloader)
+            dl,gl,mcd = validating(val_dataloader)
             
             print("D_loss: " + str(dl) + " G_loss: " + str(gl))
             
             dl_arr.append(dl)
             gl_arr.append(gl)
+            mcd_arr.append(mcd)
             
             if ep == 0:
                 gplot = viz.line(Y=np.array([gl]), X=np.array([ep]), opts=dict(title='Generator'))
                 dplot = viz.line(Y=np.array([dl]), X=np.array([ep]), opts=dict(title='Discriminator'))
+                mplot = viz.line(Y=np.array([mcd]), X=np.array([ep]), opts=dict(title='MCD'))
             else:
                 viz.line(Y=np.array([gl]), X=np.array([ep]), win=gplot, update='append')
                 viz.line(Y=np.array([dl]), X=np.array([ep]), win=dplot, update='append')
-
-            
+                viz.line(Y=np.array([mcd]), X=np.array([ep]), win=mplot, update='append')
+    
     savemat(checkpoint+"/"+str('discriminator_loss.mat'),  mdict={'foo': dl_arr})
     savemat(checkpoint+"/"+str('generator_loss.mat'),  mdict={'foo': gl_arr})
+    savemat(checkpoint+"/"+str('mcd.mat'),  mdict={'foo': mcd_arr})
 
     plt.figure(1)
     plt.plot(dl_arr)
@@ -136,13 +143,9 @@ def do_training():
     plt.figure(2)
     plt.plot(gl_arr)
     plt.savefig(checkpoint+'/generator_loss.png')
-
-
-
-'''
-Testing on training dataset as of now. Later it will be modified according to the different shell scripts.
-'''
-
+    plt.figure(3)
+    plt.plot(mcd_arr)
+    plt.savefig(checkpoint+'/mcd.png')
 
 def do_testing():
     print("Testing")
@@ -164,12 +167,6 @@ def do_testing():
 
         savemat(join(save_folder,'{}.mat'.format(i[:-4])),  mdict={'foo': Gout.cpu().data.numpy()})
 
-
-'''
-Check MCD value on validation data for now! :)
-'''
-
-
 def give_MCD():
     Gnet = torch.load(join(checkpoint,"gen_Ep_{}.pth".format(args.test_epoch))).to(device)
     mcd = []
@@ -188,7 +185,6 @@ def give_MCD():
     mcd = np.array(mcd)
     print(np.mean(mcd))
 
-
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description="Training methodology for Whisper-to-Normal Speech Conversion")
@@ -203,6 +199,7 @@ if __name__ == '__main__':
     parser.add_argument("-lr", "--learning_rate", type=float, default=0.0001, help="Learning rate")
     parser.add_argument("-vi", "--validation_interval", type=int, default=1, help="Validation Interval")
     parser.add_argument("-mf", "--mainfolder", type=str, default="../dataset/features/US_102/batches/mcc/", help="Main folder path to load MCC batches")
+    parser.add_argument("-vf", "--validation_folder", type=str, default="../dataset/features/US_102/batches/mcc/", help="Validation folder path to load MCC batches")
     parser.add_argument("-cf", "--checkpoint_folder", type=str, default="../results/checkpoints/mcc/", help="Checkpoint saving path for MCC features")
     parser.add_argument("-sf", "--save_folder", type=str, default="../results/mask/mcc/", help="Saving folder for converted MCC features")
     parser.add_argument("-tf", "--test_folder", type=str, default="../dataset/features/US_102/Whisper/mcc/", help="Input whisper mcc features for testing")
@@ -217,6 +214,7 @@ if __name__ == '__main__':
     # Path where you want to store your results        
     mainfolder = args.mainfolder
     checkpoint = args.checkpoint_folder
+    validation = args.validation_folder
 
     # Training Data path
     if args.nonparallel:
@@ -229,7 +227,7 @@ if __name__ == '__main__':
 
 
     # Path for validation data
-    valdata = custom_dataloader(folder_path=mainfolder)
+    valdata = custom_dataloader(folder_path=validation)
     val_dataloader = DataLoader(dataset=valdata, batch_size=1, shuffle=True, num_workers=0)  # For windows keep num_workers = 0
 
 

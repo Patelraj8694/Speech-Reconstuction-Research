@@ -134,6 +134,7 @@ if __name__ == '__main__':
     parser.add_argument("-lr", "--learning_rate", type=float, default=0.0001, help="Learning rate")
     parser.add_argument("-vi", "--validation_interval", type=int, default=1, help="Validation Interval")
     parser.add_argument("-mf", "--mainfolder", type=str, default="../dataset/features/US_102/batches/VUV/", help="Main folder path to load VUV batches")
+    parser.add_argument("-vf", "--validation_folder", type=str, default="../dataset/features/US_102/batches/VUV/", help="Validation folder path to load VUV batches")
     parser.add_argument("-cf", "--checkpoint_folder", type=str, default="../results/checkpoints/vuv/", help="Checkpoint saving path for VUV features")
     parser.add_argument("-sf", "--save_folder", type=str, default="../results/mask/vuv/", help="Saving folder for converted MCC features")
     parser.add_argument("-tf", "--test_folder", type=str, default="../results/mask/mcc/", help="Input whisper mcc features for testing")
@@ -147,6 +148,7 @@ if __name__ == '__main__':
     # Path where you want to store your results        
     mainfolder = args.mainfolder
     checkpoint = args.checkpoint_folder
+    validation = args.validation_folder
 
     if args.nonparallel:
         custom_dataloader = non_parallel_dataloader
@@ -155,12 +157,12 @@ if __name__ == '__main__':
 
     # Training Data path
     traindata = custom_dataloader(folder_path=mainfolder)
-    train_dataloader = DataLoader(dataset=traindata, batch_size=1, shuffle=True, num_workers=2)  # For windows keep num_workers = 0
+    train_dataloader = DataLoader(dataset=traindata, batch_size=1, shuffle=True, num_workers=0)  # For windows keep num_workers = 0
 
 
     # Path for validation data
-    valdata = custom_dataloader(folder_path=mainfolder)
-    val_dataloader = DataLoader(dataset=valdata, batch_size=1, shuffle=True, num_workers=2)  # For windows keep num_workers = 0
+    valdata = custom_dataloader(folder_path=validation)
+    val_dataloader = DataLoader(dataset=valdata, batch_size=1, shuffle=True, num_workers=0)  # For windows keep num_workers = 0
 
 
     # Loss Functions

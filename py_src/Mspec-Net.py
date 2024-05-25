@@ -336,6 +336,7 @@ if __name__ == '__main__':
     parser.add_argument("-vi", "--validation_interval", type=int, default=1, help="Validation Interval")
     parser.add_argument("-mf1", "--mainfolder1", type=str, default="../dataset/features/MSpeC-Net/NAM2WHSP/batches/mcc/", help="Main folder path to load NAM-Whisper MCC batches")
     parser.add_argument("-mf2", "--mainfolder2", type=str, default="../dataset/features/MSpeC-Net/WHSP2SPCH/batches/mcc/", help="Main folder path to load Whisper-Normal Speech MCC batches")
+    parser.add_argument("-vf", "--validation_folder", type=str, default="../dataset/features/MSpeC-Net/WHSP2SPCH/batches/mcc/", help="Validation folder path for MCC features")
     parser.add_argument("-cf", "--checkpoint_folder", type=str, default="../results/checkpoints/mcc/", help="Checkpoint saving path for MCC features")
     parser.add_argument("-sf", "--save_folder", type=str, default="../results/mask/mcc/", help="Saving folder for converted MCC features")
     parser.add_argument("-tt", "--test_type", type=str, default="whsp2spch", help="Provide the type of conversation to be tested out.")
@@ -352,6 +353,7 @@ if __name__ == '__main__':
     mainfolder1 = args.mainfolder1
     mainfolder2 = args.mainfolder2
     checkpoint = args.checkpoint_folder
+    validation = args.validation_folder
 
     # Training Data path
     if args.nonparallel:
@@ -364,7 +366,7 @@ if __name__ == '__main__':
 
 
     # Path for validation data
-    valdata = custom_dataloader(folder1=mainfolder1, folder2=mainfolder2)
+    valdata = custom_dataloader(folder1=validation, folder2=validation)
     val_dataloader = DataLoader(dataset=valdata, batch_size=1, shuffle=True, num_workers=0)  # For windows keep num_workers = 0
 
 

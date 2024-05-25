@@ -37,7 +37,8 @@ process_directory() {
     mkdir -p "$output_dir"
 
     find "$input_dir" -type f -name "*.wav" | while read -r file_path; do
-        folder_name=$(basename "$(dirname "$file_path")")
+        # Extracting the parent folder name which might be like "FOLDER03"
+        folder_name=$(basename "$(dirname "$(dirname "$file_path")")")
         base_name=$(basename "$file_path" .wav)
         filename="${base_name}_${folder_name}"
 
@@ -52,7 +53,7 @@ process_directory() {
 }
 
 # Main execution
-input_directory="/mnt/d/Distorted_Speech_Segmented_Data/Normal_06"  # Replace with your input directory
-output_directory="/mnt/c/laryngectomy/dataset/data/Test/Normal"  # Replace with your output directory
+input_directory="/mnt/d/Distorted_chunk_data/FOLDER19/Whisper"  # Replace with your input directory
+output_directory="/mnt/c/laryngectomy/dataset_chunk/data/Whisper"  # Replace with your output directory
 
 process_directory "$input_directory" "$output_directory"
