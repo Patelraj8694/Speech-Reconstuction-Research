@@ -177,7 +177,7 @@ if __name__ == '__main__':
 
     # Initialization 
     if args.dnn_cnn == "dnn":
-        net = dnn(40, 1, 512, 256, 128, 64, 32, 16).to(device)
+        net = dnn(40, 1, 128, 256, 512, 512, 256, 128, 64, 32).to(device)
 
     # Initialize the optimizers
     optimizer = torch.optim.Adam(net.parameters(), lr=args.learning_rate)

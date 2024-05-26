@@ -106,47 +106,68 @@ class dnn_decoder(nn.Module):
 class dnn(nn.Module):
     
     def weight_init(self):
-        nn.init.xavier_uniform_(self.fc1.weight)
-        nn.init.xavier_uniform_(self.fc2.weight)
-        nn.init.xavier_uniform_(self.fc3.weight)
-        nn.init.xavier_uniform_(self.fc4.weight)
-        nn.init.xavier_uniform_(self.fc5.weight)
-        nn.init.xavier_uniform_(self.fc6.weight)
-        nn.init.xavier_uniform_(self.out.weight)
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
 
-    def __init__(self, G_in, G_out, w1, w2, w3, w4, w5, w6, dropout_rate=0.3):
+    def __init__(self, G_in, G_out, w1, w2, w3, w4, w5, w6, w7, w8, dropout_rate=0.3):
         super(dnn, self).__init__()
         
         self.fc1 = nn.Linear(G_in, w1)
+        self.prelu1 = nn.PReLU()
         self.bn1 = nn.BatchNorm1d(w1)
+
         self.fc2 = nn.Linear(w1, w2)
+        self.prelu2 = nn.PReLU()
         self.bn2 = nn.BatchNorm1d(w2)
+
         self.fc3 = nn.Linear(w2, w3)
+        self.prelu3 = nn.PReLU()
         self.bn3 = nn.BatchNorm1d(w3)
+
         self.fc4 = nn.Linear(w3, w4)
+        self.prelu4 = nn.PReLU()
         self.bn4 = nn.BatchNorm1d(w4)
+
         self.fc5 = nn.Linear(w4, w5)
+        self.prelu5 = nn.PReLU()
         self.bn5 = nn.BatchNorm1d(w5)
+
         self.fc6 = nn.Linear(w5, w6)
+        self.prelu6 = nn.PReLU()
         self.bn6 = nn.BatchNorm1d(w6)
-        self.out = nn.Linear(w6, G_out)
+
+        self.fc7 = nn.Linear(w6, w7)
+        self.prelu7 = nn.PReLU()
+        self.bn7 = nn.BatchNorm1d(w7)
+
+        self.fc8 = nn.Linear(w7, w8)
+        self.prelu8 = nn.PReLU()
+        self.bn8 = nn.BatchNorm1d(w8)
+
+        self.out = nn.Linear(w8, G_out)
         self.dropout = nn.Dropout(dropout_rate)
 
         self.weight_init()
         
     def forward(self, x):
-        x = F.leaky_relu(self.bn1(self.fc1(x)))
+        x = self.prelu1(self.bn1(self.fc1(x)))
         x = self.dropout(x)
-        x = F.leaky_relu(self.bn2(self.fc2(x)))
+        x = self.prelu2(self.bn2(self.fc2(x)))
         x = self.dropout(x)
-        x = F.leaky_relu(self.bn3(self.fc3(x)))
+        x = self.prelu3(self.bn3(self.fc3(x)))
         x = self.dropout(x)
-        x = F.leaky_relu(self.bn4(self.fc4(x)))
+        x = self.prelu4(self.bn4(self.fc4(x)))
         x = self.dropout(x)
-        x = F.leaky_relu(self.bn5(self.fc5(x)))
+        x = self.prelu5(self.bn5(self.fc5(x)))
         x = self.dropout(x)
-        x = F.leaky_relu(self.bn6(self.fc6(x)))
-        x = F.sigmoid(self.out(x))
+        x = self.prelu6(self.bn6(self.fc6(x)))
+        x = self.dropout(x)
+        x = self.prelu7(self.bn7(self.fc7(x)))
+        x = self.dropout(x)
+        x = self.prelu8(self.bn8(self.fc8(x)))
+        x = self.dropout(x)
+        x = torch.sigmoid(self.out(x))
         return x
 
 
