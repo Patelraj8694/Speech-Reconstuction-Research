@@ -3,6 +3,9 @@ import soundfile as sf
 from pystoi import stoi
 from pesq import pesq
 from pymcd.mcd import Calculate_MCD
+import pyworld as pw
+from fastdtw import fastdtw
+from scipy.spatial.distance import euclidean
 
 def match_length(signal1, signal2):
     """Ensure that two signals have the same length by trimming or padding the longer one."""
@@ -12,6 +15,29 @@ def match_length(signal1, signal2):
     elif len2 > len1:
         signal2 = signal2[:len1]
     return signal1, signal2
+
+# def calculate_rmse_voiced_aligned(reference, degraded, fs):
+#     """Calculate RMSE for the voiced parts of speech signals using FastDTW for alignment."""
+#     # Frame period typically used in pyworld
+#     frame_period = 5.0  # in milliseconds
+    
+#     # Analyze both signals to extract fundamental frequency (F0) and voiced regions
+#     f0_ref, _ = pw.dio(reference, fs, frame_period=frame_period)
+#     f0_deg, _ = pw.dio(degraded, fs, frame_period=frame_period)
+    
+#     # Filter out unvoiced parts where f0 is 0
+#     voiced_ref = reference[f0_ref > 0]
+#     voiced_deg = degraded[f0_deg > 0]
+
+#     # Align signals using FastDTW
+#     distance, path = fastdtw(voiced_ref, voiced_deg, dist=euclidean)
+#     aligned_ref = np.array([voiced_ref[i] for i, j in path])
+#     aligned_deg = np.array([voiced_deg[j] for i, j in path])
+
+#     # Calculate RMSE
+#     rmse = np.sqrt(np.mean((aligned_ref - aligned_deg) ** 2))
+#     return rmse
+
 
 def calculate_snr(reference, degraded):
     """Calculate the normal Signal-to-Noise Ratio (SNR)."""
@@ -28,13 +54,13 @@ def calculate_segsnr(reference, degraded, segment_length=160):
         segsnr.append(segment_snr)
     return np.mean(segsnr)
 
-def objective_evaluation(raw_reference_speech, raw_reconstructed_speech,reference_speech, reconstructed_speech, fs):
+def objective_evaluation(reference_speech, reconstructed_speech, fs):
     # Ensure same length for evaluation
     ref_speech, recon_speech = match_length(reference_speech, reconstructed_speech)
     
-    # MCD
-    mcd_toolbox = Calculate_MCD(MCD_mode="dtw_sl")
-    mcd_value = mcd_toolbox.calculate_mcd(raw_reference_speech, raw_reconstructed_speech)
+    # # MCD
+    # mcd_toolbox = Calculate_MCD(MCD_mode="dtw_sl")
+    # mcd_value = mcd_toolbox.calculate_mcd(raw_reference_speech, raw_reconstructed_speech)
     
     # STOI
     stoi_value = stoi(ref_speech, recon_speech, fs, extended=False)
@@ -46,8 +72,10 @@ def objective_evaluation(raw_reference_speech, raw_reconstructed_speech,referenc
     snr_value = calculate_snr(ref_speech, recon_speech)
     segsnr_value = calculate_segsnr(ref_speech, recon_speech)
 
+    # RMSE for voiced segments
+    # rmse_voiced = calculate_rmse_voiced_aligned(reference_speech, reconstructed_speech, fs)
+
     return {
-        "MCD": mcd_value,
         "STOI": stoi_value,
         "PESQ": pesq_value,
         "SNR": snr_value,
@@ -60,5 +88,5 @@ raw_reconstructed_speech = r"C:\laryngectomy\dataset\data\Test\Normal\sen_1_norm
 reference_speech, sr = sf.read(raw_reference_speech)
 reconstructed_speech, sr = sf.read(raw_reconstructed_speech)
 
-results = objective_evaluation(raw_reference_speech, raw_reconstructed_speech, reference_speech, reconstructed_speech, sr)
+results = objective_evaluation(reference_speech, reconstructed_speech, sr)
 print(results)
