@@ -1,92 +1,81 @@
 import numpy as np
 import soundfile as sf
+import librosa
 from pystoi import stoi
 from pesq import pesq
-from pymcd.mcd import Calculate_MCD
-import pyworld as pw
-from fastdtw import fastdtw
 from scipy.spatial.distance import euclidean
+from fastdtw import fastdtw
+from pathlib import Path
+from mel_cepstral_distance import get_metrics_wavs
 
-def match_length(signal1, signal2):
-    """Ensure that two signals have the same length by trimming or padding the longer one."""
-    len1, len2 = len(signal1), len(signal2)
-    if len1 > len2:
-        signal1 = signal1[:len2]
-    elif len2 > len1:
-        signal2 = signal2[:len1]
-    return signal1, signal2
+def process_audio(file_path1, file_path2, sr):
+    """
+    Process two audio files to compute various objective metrics after time-aligning them.
 
-# def calculate_rmse_voiced_aligned(reference, degraded, fs):
-#     """Calculate RMSE for the voiced parts of speech signals using FastDTW for alignment."""
-#     # Frame period typically used in pyworld
-#     frame_period = 5.0  # in milliseconds
-    
-#     # Analyze both signals to extract fundamental frequency (F0) and voiced regions
-#     f0_ref, _ = pw.dio(reference, fs, frame_period=frame_period)
-#     f0_deg, _ = pw.dio(degraded, fs, frame_period=frame_period)
-    
-#     # Filter out unvoiced parts where f0 is 0
-#     voiced_ref = reference[f0_ref > 0]
-#     voiced_deg = degraded[f0_deg > 0]
+    :param file_path1: Path to the first audio file.
+    :param file_path2: Path to the second audio file.
+    :param sr: Sampling rate to which both audio files should be resampled.
+    :return: Dictionary of computed metrics.
+    """
+    # Read audio files
+    data1, sr1 = sf.read(file_path1)
+    data2, sr2 = sf.read(file_path2)
 
-#     # Align signals using FastDTW
-#     distance, path = fastdtw(voiced_ref, voiced_deg, dist=euclidean)
-#     aligned_ref = np.array([voiced_ref[i] for i, j in path])
-#     aligned_deg = np.array([voiced_deg[j] for i, j in path])
+    # Ensure the data is mono
+    if data1.ndim > 1:
+        data1 = np.mean(data1, axis=1)  # Convert to mono by averaging the channels
+    if data2.ndim > 1:
+        data2 = np.mean(data2, axis=1)
 
-#     # Calculate RMSE
-#     rmse = np.sqrt(np.mean((aligned_ref - aligned_deg) ** 2))
-#     return rmse
+    # Resample if necessary
+    if sr1 != sr:
+        data1 = librosa.resample(data1, sr1, sr)
+    if sr2 != sr:
+        data2 = librosa.resample(data2, sr2, sr)
 
+    # Perform DTW using fastdtw
+    distance, path = fastdtw(data1.reshape(-1,1), data2.reshape(-1,1), dist=euclidean)
+    aligned_data1 = np.array([data1[idx] for idx, _ in path])
+    aligned_data2 = np.array([data2[idx] for _, idx in path])
 
-def calculate_snr(reference, degraded):
-    """Calculate the normal Signal-to-Noise Ratio (SNR)."""
-    snr = 10 * np.log10(np.sum(reference ** 2) / np.sum((reference - degraded) ** 2))
-    return snr
+    # Compute STOI
+    d_stoi = stoi(aligned_data1, aligned_data2, sr, extended=False)
 
-def calculate_segsnr(reference, degraded, segment_length=160):
-    """Calculate the Segmental Signal-to-Noise Ratio (SegSNR)."""
-    segsnr = []
-    for i in range(0, len(reference) - segment_length + 1, segment_length):
-        ref_segment = reference[i:i + segment_length]
-        deg_segment = degraded[i:i + segment_length]
-        segment_snr = 10 * np.log10(np.sum(ref_segment ** 2) / np.sum((ref_segment - deg_segment) ** 2))
-        segsnr.append(segment_snr)
-    return np.mean(segsnr)
+    # Compute PESQ
+    d_pesq = pesq(sr, aligned_data1, aligned_data2, 'wb')
 
-def objective_evaluation(reference_speech, reconstructed_speech, fs):
-    # Ensure same length for evaluation
-    ref_speech, recon_speech = match_length(reference_speech, reconstructed_speech)
-    
-    # # MCD
-    # mcd_toolbox = Calculate_MCD(MCD_mode="dtw_sl")
-    # mcd_value = mcd_toolbox.calculate_mcd(raw_reference_speech, raw_reconstructed_speech)
-    
-    # STOI
-    stoi_value = stoi(ref_speech, recon_speech, fs, extended=False)
+    # Compute SNR
+    noise = aligned_data1 - aligned_data2
+    snr = 10 * np.log10(np.sum(aligned_data1 ** 2) / np.sum(noise ** 2))
 
-    # PESQ
-    pesq_value = pesq(fs, reference_speech, reconstructed_speech, 'wb')
+    # Compute Segmental SNR
+    seg_len = int(sr * 0.200)  # 200 ms segments
+    seg_snr = []
+    for i in range(0, len(aligned_data1) - seg_len, seg_len):
+        seg_signal = aligned_data1[i:i+seg_len]
+        seg_noise = noise[i:i+seg_len]
+        seg_snr.append(10 * np.log10(np.sum(seg_signal ** 2) / np.sum(seg_noise ** 2)))
+    seg_snr = np.mean(seg_snr)
 
-    # SNR and SegSNR
-    snr_value = calculate_snr(ref_speech, recon_speech)
-    segsnr_value = calculate_segsnr(ref_speech, recon_speech)
-
-    # RMSE for voiced segments
-    # rmse_voiced = calculate_rmse_voiced_aligned(reference_speech, reconstructed_speech, fs)
+    # Compute MCD
+    wav_file_1 = Path(file_path1)
+    wav_file_2 = Path(file_path2)
+    if not wav_file_1.is_file() or not wav_file_2.is_file():
+        raise FileNotFoundError("One of the audio files does not exist.")
+    mcd, penalty, frames = get_metrics_wavs(wav_file_1, wav_file_2, n_mfcc=40)
 
     return {
-        "STOI": stoi_value,
-        "PESQ": pesq_value,
-        "SNR": snr_value,
-        "SegSNR": segsnr_value
+        'STOI': d_stoi,
+        'PESQ': d_pesq,
+        'SNR': snr,
+        'Segmental SNR': seg_snr,
+        'MCD': mcd,
+        'Penalty': penalty,
+        'Frames': frames
     }
 
-# Load and process the data
+# Example usage
 raw_reference_speech = r"C:\laryngectomy\results\converted_wav\mmse-chunk-exp-1\sen_1_normal_total_Normal_04.wav"
 raw_reconstructed_speech = r"C:\laryngectomy\dataset\data\Test\Normal\sen_1_normal_total_Normal_04.wav"
-reference_speech, sr = sf.read(raw_reference_speech)
-reconstructed_speech, sr = sf.read(raw_reconstructed_speech)
-
-results = objective_evaluation(reference_speech, reconstructed_speech, sr)
-print(results)
+metrics = process_audio(raw_reference_speech, raw_reconstructed_speech, 16000)
+print(metrics)
