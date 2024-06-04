@@ -7,6 +7,7 @@ from scipy.spatial.distance import euclidean
 from fastdtw import fastdtw
 from pathlib import Path
 from mel_cepstral_distance import get_metrics_wavs
+import pysepm
 
 def process_audio(file_path1, file_path2, sr):
     """
@@ -44,6 +45,18 @@ def process_audio(file_path1, file_path2, sr):
     # Compute PESQ
     d_pesq = pesq(sr, aligned_data1, aligned_data2, 'wb')
 
+    # Compute LLR
+    llr = pysepm.llr(aligned_data1, aligned_data2, sr)
+
+    # compute Ceptrum Distance (CD)
+    cd = pysepm.cepstrum_distance(aligned_data1, aligned_data2, sr)
+
+    # compute stoi pysepm
+    stoi_pysepm = pysepm.stoi(aligned_data1, aligned_data2, sr)
+
+    # compute SSNR pysepm
+    ssnr_pysepm = pysepm.SNRseg(aligned_data1, aligned_data2, sr, frameLen=0.2)
+
     # Compute SNR
     noise = aligned_data1 - aligned_data2
     snr = 10 * np.log10(np.sum(aligned_data1 ** 2) / np.sum(noise ** 2))
@@ -67,6 +80,10 @@ def process_audio(file_path1, file_path2, sr):
     return {
         'STOI': d_stoi,
         'PESQ': d_pesq,
+        'LLR': llr,
+        'CD': cd,
+        'STOI pysepm': stoi_pysepm,
+        'SSNR pysepm': ssnr_pysepm,
         'SNR': snr,
         'Segmental SNR': seg_snr,
         'MCD': mcd,
