@@ -55,14 +55,17 @@ def process_audio(file_path1, file_path2, sr):
     stoi_pysepm = pysepm.stoi(aligned_data1, aligned_data2, sr)
 
     # compute SSNR pysepm
-    ssnr_pysepm = pysepm.SNRseg(aligned_data1, aligned_data2, sr, frameLen=0.2)
+    ssnr_pysepm = pysepm.SNRseg(aligned_data1, aligned_data2, sr)
+
+    # compute SNR pysepm
+    snr_pysepm = pysepm.SNRseg(aligned_data1, aligned_data2, sr, frameLen=1, overlap=0)
 
     # Compute SNR
     noise = aligned_data1 - aligned_data2
     snr = 10 * np.log10(np.sum(aligned_data1 ** 2) / np.sum(noise ** 2))
 
     # Compute Segmental SNR
-    seg_len = int(sr * 0.200)  # 200 ms segments
+    seg_len = int(sr * 0.03)  # 200 ms segments
     seg_snr = []
     for i in range(0, len(aligned_data1) - seg_len, seg_len):
         seg_signal = aligned_data1[i:i+seg_len]
@@ -84,6 +87,7 @@ def process_audio(file_path1, file_path2, sr):
         'CD': cd,
         'STOI pysepm': stoi_pysepm,
         'SSNR pysepm': ssnr_pysepm,
+        'SNR pysepm': snr_pysepm,
         'SNR': snr,
         'Segmental SNR': seg_snr,
         'MCD': mcd,
