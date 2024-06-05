@@ -34,7 +34,9 @@ def itakura_saito_distance(ar1, var1, ar2, var2):
 def align_signals(signal1, signal2):
     """ Align two signals using FastDTW """
     distance, path = fastdtw(signal1.reshape(-1,1), signal2.reshape(-1,1), dist=euclidean)
-    return distance, path
+    aligned_signal1 = np.array([signal1[idx] for idx, _ in path])
+    aligned_signal2 = np.array([signal2[idx] for _, idx in path])
+    return aligned_signal1, aligned_signal2
 
 # Example usage: Load your actual speech data from wav files
 signal2, sr2 = load_audio(r"C:\laryngectomy\dataset\data\Test\Normal\sen_1_normal_total_Normal_04.wav")
@@ -48,6 +50,13 @@ ar2, var2 = estimate_ar_parameters(signal2, order=16)
 distance_is = itakura_saito_distance(ar1, var1, ar2, var2)
 print(f'Itakura-Saito Distance: {distance_is}')
 
-# # Align signals using FastDTW
-# distance_dtw, path_dtw = align_signals(signal1, signal2)
-# print(f'FastDTW Distance: {distance_dtw}')
+# Align signals using FastDTW
+aligned_signal1, aligned_signal2 = align_signals(signal1, signal2)
+
+# Estimate AR parameters for the aligned signals
+ar1_aligned, var1_aligned = estimate_ar_parameters(aligned_signal1, order=16)
+ar2_aligned, var2_aligned = estimate_ar_parameters(aligned_signal2, order=16)
+
+# Calculate Itakura-Saito distance for the aligned signals
+distance_is_aligned = itakura_saito_distance(ar1_aligned, var1_aligned, ar2_aligned, var2_aligned)
+print(f'Itakura-Saito Distance (Aligned): {distance_is_aligned}')
